@@ -1,55 +1,25 @@
-import java.io.File
+package com.exemplo.estoque
+
 import java.lang.Exception
-
-typealias Produto = Triple<Int, String, Int>
-const val ID = 0
-const val NOME = 1
-const val QUANTIDADE = 2
-
-// Comandos
-const val AJUDA     = "AJUDA"
-const val ADICIONAR = "ADICIONAR"
-const val EDITAR    = "EDITAR"
-const val ESTOCADOS = "ESTOCADOS"
-const val TODOS     = "TODOS"
-const val LER       = "LER"
-const val GRAVAR    = "GRAVAR"
-const val FINALIZAR = "FINALIZAR"
-val comandos = listOf(AJUDA, ADICIONAR, EDITAR, ESTOCADOS, TODOS, LER, GRAVAR, FINALIZAR)
+import java.security.InvalidParameterException
 
 const val ARQUIVO = "estoque.txt"
 
-var estoque = mutableListOf<Produto>()
-var quantProdutos = estoque.size
+var estoque = Estoque()
 
 fun main() {
     while (true) {
-        val comando = lerComando()
-        when (comando) {
-            AJUDA     -> mostrarAjuda()
-            ADICIONAR -> adicionar()
-            EDITAR    -> editar()
-            ESTOCADOS -> mostrarEstocados()
-            TODOS     -> mostrarTodos()
-            LER       -> estoque = ler("estoque.txt")
-            GRAVAR    -> gravar("estoque.txt", estoque)
-            FINALIZAR -> break
+        when (Comando.lerComando()) {
+            Comando.AJUDA -> mostrarAjuda()
+            Comando.ADICIONAR -> adicionar()
+            Comando.EDITAR -> editar()
+            Comando.ESTOCADOS -> mostrarEstocados()
+            Comando.TODOS -> mostrarTodos()
+            Comando.LER -> ler(ARQUIVO)
+            Comando.GRAVAR -> gravar(ARQUIVO)
+            Comando.FINALIZAR -> break
         }
     }
-}
-
-fun lerComando(): String {
-    var comando = ""
-    while (true) {
-        println()
-        print("Digite o comando ou AJUDA para ver todos os comandos: ")
-        comando = readln().uppercase()
-        if (comandos.contains(comando)) {
-            break
-        }
-    }
-    println()
-    return comando
 }
 
 fun mostrarAjuda() {
@@ -69,44 +39,49 @@ fun mostrarAjuda() {
 
 fun adicionar() {
     println("Comando: ADICIONAR")
-    val idProduto = quantProdutos + 1
     val nomeProduto = responderComTexto("Nome do produto? ")
     val quantProduto = responderComIntNaoNegativo("Quantidade do produto? ")
-    estoque.add(Produto(idProduto, nomeProduto, quantProduto))
-    quantProdutos++
+    estoque.adicionarProduto(Produto(nomeProduto, quantProduto))
     println("   Produto adicionado")
 }
 
 fun editar() {
     println("Comando: EDITAR")
-    if (estoque.isEmpty()) {
-        println("   O estoque está vazio")
+    if (estoque.estaVazio()) {
+        println("   Não existem produtos cadastrados no estoque.")
         return
     }
-    val nroProduto = responderComID("ID: ") - 1
-    val produto: Produto = estoque[nroProduto]
-    var (idProduto, nomeProduto, quantProduto) = produto
+    val nroProduto = responderComID("ID: ", estoque.contarTodosProdutos())
+    val produto: Produto = try {
+        estoque.encontrarProduto(nroProduto)
+    } catch (e: InvalidParameterException) {
+        println("   ${e.message} <== Erro: Produto inexistente")
+        return
+    }
+    println("   Produto: $produto")
+    var novoNomeProduto = produto.nome
     if (respondeSN("Deseja editar o nome do produto (S/N)?") == "S") {
-        nomeProduto = responderComTexto("Nome do produto: ")
+        novoNomeProduto = responderComTexto("Nome do produto: ")
     }
+    var novaQuantProduto = produto.quantidade
     if (respondeSN("Deseja editar a quantidade do produto (S/N)?") == "S") {
-        quantProduto = responderComIntNaoNegativo("Quantidade: ")
+        novaQuantProduto = responderComIntNaoNegativo("Quantidade: ")
     }
-    estoque[nroProduto] = Produto(idProduto, nomeProduto, quantProduto)
+    estoque.substituirProduto(produto.id, novoNomeProduto, novaQuantProduto)
+    println("   Produto atualizado")
 }
 
 fun mostrarTodos() {
     println("Comando: Listar TODOS")
     println()
-    if (estoque.isEmpty()) {
+    if (estoque.estaVazio()) {
         println("   O estoque está vazio.")
         return
     }
     println("      ID               PRODUTO               QUANT.")
     println("   ==================================================")
-    estoque.forEach() { produto ->
-        val (idProduto, nomeProduto, quantProduto) = produto
-        println("   | %04d | %-30s | %6d |".format(idProduto, nomeProduto, quantProduto))
+    estoque.listarTodosProdutos().forEach { produto ->
+        println("   | %04d | %-30s | %6d |".format(produto.id, produto.nome, produto.quantidade))
     }
     println("   ==================================================")
 }
@@ -114,46 +89,34 @@ fun mostrarTodos() {
 fun mostrarEstocados() {
     println("Comando: Listar ESTOCADOS")
     println()
-    val estoqueComProdutos = estoque.filter { produto -> produto.third != 0 }
-    if (estoqueComProdutos.isEmpty()) {
+    val estoqueReal = estoque.listarProdutosNoEstoque()
+    if (estoqueReal.isEmpty()) {
         println("   O estoque está vazio.")
         return
     }
     println("      ID               PRODUTO               QUANT.")
     println("   ==================================================")
-    estoqueComProdutos.forEach() { produto ->
-        val (idProduto, nomeProduto, quantProduto) = produto
-        println("   | %04d | %-30s | %6d |".format(idProduto, nomeProduto, quantProduto))
+    estoqueReal.forEach { produto ->
+        println("   | %04d | %-30s | %6d |".format(produto.id, produto.nome, produto.quantidade))
     }
     println("   ==================================================")
 }
 
-fun gravar(arq: String, estoque: List<Produto>) {
+fun gravar(arq: String = ARQUIVO) {
     println("Comando: GRAVAR")
-    val arquivo = File(arq)
-    val estoqueSerializado = estoque.map { "${it.first}||${it.second}||${it.third}" }
-    var textoSaida = ""
-    estoqueSerializado.forEach { produtoSerializado ->
-        textoSaida += if (textoSaida.isEmpty()) produtoSerializado else "\n$produtoSerializado"
-    }
-    arquivo.writeText(textoSaida)
+    estoque.gravar(arq)
     println("   O estoque foi gravado no arquivo $ARQUIVO")
 }
 
-fun ler(arq: String): MutableList<Produto> {
+fun ler(arq: String) {
     println("Comando LER")
-    val arquivo = File(arq)
-    val estoqueSerializado = arquivo.readLines()
-    val estoque = estoqueSerializado
-        .map { it.split("||") }
-        .map { Produto(it[ID].toInt(), it[NOME], it[QUANTIDADE].toInt()) }
-    quantProdutos = estoque.size
-    println("   Foram lidos $quantProdutos produtos do arquivo $ARQUIVO")
-    return estoque.toMutableList()
+    estoque.ler(arq)
+    println("   Foram lidos ${estoque.contarTodosProdutos()} produtos do arquivo $ARQUIVO")
+    return
 }
 
 fun respondeSN(pergunta: String): String {
-    var resposta = ""
+    var resposta: String
     while (true) {
         print("   $pergunta ")
         resposta = readln().uppercase()
@@ -174,7 +137,7 @@ fun responderComTexto(pergunta: String): String {
 }
 
 fun responderComIntNaoNegativo(pergunta: String, max: Int = 99999): Int {
-    var resposta = -1
+    var resposta: Int
     while (true) {
         print("   $pergunta")
         try {
@@ -196,14 +159,14 @@ fun responderComIntNaoNegativo(pergunta: String, max: Int = 99999): Int {
     return resposta
 }
 
-fun responderComID(pergunta: String): Int {
-    var resposta = -1
+fun responderComID(pergunta: String, idMax:Int): Int {
+    var resposta: Int
     while (true) {
         print("   $pergunta")
         try {
             resposta = readln().toInt()
         } catch (e: Exception) {
-            println("ERRO -> Resposta deve ser um número inteiro entre 1 e ${quantProdutos}.")
+            println("ERRO -> Resposta deve ser um número inteiro entre 1 e ${idMax}.")
             continue
         }
         if (resposta < 1) {
